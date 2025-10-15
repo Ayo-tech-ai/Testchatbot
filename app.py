@@ -4,7 +4,8 @@ from gtts import gTTS
 import tempfile
 import whisper
 import time
-from streamlit_audiorec import st_audiorec  # ✅ Correct import for Streamlit Cloud
+import os
+import base64
 
 # -------------------------------
 # 1. Load Models
@@ -28,7 +29,7 @@ whisper_model = load_whisper_model()
 sections = {
     "bacterial leaf blight": "Bacterial Leaf Blight is caused by the bacterium Xanthomonas oryzae pv. oryzae. It affects leaves, leading to yellowing and wilting.",
     "bacterial leaf streak": "Bacterial Leaf Streak is caused by Xanthomonas oryzae pv. oryzicola. It causes narrow, water-soaked streaks on leaves.",
-    "bakanae": "Bakanae Disease, also known as ‘Foolish Seedling’, is caused by the fungus Fusarium fujikuroi and leads to elongated, thin seedlings.",
+    "bakanae": "Bakanae Disease, also known as 'Foolish Seedling', is caused by the fungus Fusarium fujikuroi and leads to elongated, thin seedlings.",
     "brown spot": "Brown Spot is caused by Bipolaris oryzae. It appears as brown circular spots on leaves, affecting photosynthesis.",
     "grassy stunt": "Rice Grassy Stunt Virus (RGSV) is spread by the brown planthopper and causes stunted growth.",
     "narrow brown spot": "Narrow Brown Spot is caused by the fungus Cercospora janseana, leading to narrow brown lesions on leaves.",
@@ -103,25 +104,42 @@ for msg in st.session_state.history:
 st.markdown("</div>", unsafe_allow_html=True)
 
 # -------------------------------
-# 5. Voice Recording
+# 5. Voice Recording (Alternative Approach)
 # -------------------------------
 
 st.markdown("🎙️ **Record your voice question below:**")
-audio_bytes = st_audiorec()
+
+# Option 1: Use st.audio_input (Streamlit's built-in audio recorder)
+audio_file = st.audio_input("Record your question", label_visibility="collapsed")
 
 question = None
 
-if audio_bytes:
+if audio_file:
+    st.audio(audio_file, format="audio/wav")
+    
+    # Save the uploaded audio to a temporary file
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-        tmp.write(audio_bytes)
+        tmp.write(audio_file.read())
         tmp_path = tmp.name
 
-    st.audio(audio_bytes, format="audio/wav")
-
     with st.spinner("Transcribing your voice..."):
-        result = whisper_model.transcribe(tmp_path)
-        question = result["text"]
-        st.markdown(f"🗣️ You said: **{question}**")
+        try:
+            result = whisper_model.transcribe(tmp_path)
+            question = result["text"]
+            if question.strip():  # Only show if we got actual text
+                st.markdown(f"🗣️ You said: **{question}**")
+            else:
+                st.warning("No speech detected in the recording. Please try again.")
+                question = None
+        except Exception as e:
+            st.error(f"Error transcribing audio: {e}")
+            question = None
+    
+    # Clean up temporary file
+    try:
+        os.unlink(tmp_path)
+    except:
+        pass
 
 # -------------------------------
 # 6. Text Input Fallback
@@ -158,19 +176,42 @@ if question:
         time.sleep(1)  # simulate latency
 
         if selected_context:
-            result = qa_pipeline(question=question, context=selected_context)
-            answer = result["answer"]
+            try:
+                result = qa_pipeline(question=question, context=selected_context)
+                answer = result["answer"]
+            except Exception as e:
+                answer = f"I encountered an error processing your question: {str(e)}"
         else:
-            answer = "Hmm, I couldn’t find that disease in my knowledge base. Try mentioning the name like 'blast', 'blight', or 'tungro'."
+            answer = "Hmm, I couldn't find that disease in my knowledge base. Try mentioning the name like 'blast', 'blight', or 'tungro'."
 
     st.session_state.history.append({"role": "bot", "content": answer})
 
     # Voice Output (if selected)
-    if output_mode == "Text + Voice":
+    if output_mode == "Text + Voice" and answer:
         with st.spinner("Generating voice reply..."):
-            tts = gTTS(answer)
-            audio_path = "bot_reply.mp3"
-            tts.save(audio_path)
-            st.audio(audio_path, autoplay=True)
+            try:
+                tts = gTTS(text=answer, lang='en')
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_audio:
+                    tts.save(tmp_audio.name)
+                    # Read the audio file and display it
+                    audio_bytes = open(tmp_audio.name, 'rb').read()
+                    st.audio(audio_bytes, format="audio/mp3")
+                # Clean up
+                try:
+                    os.unlink(tmp_audio.name)
+                except:
+                    pass
+            except Exception as e:
+                st.error(f"Error generating voice: {e}")
 
+    st.rerun()
+
+# -------------------------------
+# 9. Clear Chat Button
+# -------------------------------
+
+if st.button("Clear Chat"):
+    st.session_state.history = [
+        {"role": "bot", "content": "Hello 👋🏽! You can type or record your question about rice diseases — e.g., 'What causes rice blast?'."}
+    ]
     st.rerun()
