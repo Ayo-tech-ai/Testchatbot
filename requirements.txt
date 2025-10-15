@@ -6,4 +6,4 @@ requests
 soundfile
 gtts
 git+https://github.com/openai/whisper.git
-st-audiorec
+streamlit-audiorec
