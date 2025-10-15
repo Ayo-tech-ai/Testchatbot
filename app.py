@@ -4,7 +4,7 @@ from gtts import gTTS
 import tempfile
 import whisper
 import time
-from st_audiorec import st_audiorec  # ✅ Works safely on Streamlit Cloud
+from streamlit_audiorec import st_audiorec  # ✅ Correct import for Streamlit Cloud
 
 # -------------------------------
 # 1. Load Models
@@ -118,7 +118,7 @@ if audio_bytes:
 
     st.audio(audio_bytes, format="audio/wav")
 
-    with st.spinner("Transcribing your question..."):
+    with st.spinner("Transcribing your voice..."):
         result = whisper_model.transcribe(tmp_path)
         question = result["text"]
         st.markdown(f"🗣️ You said: **{question}**")
