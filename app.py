@@ -114,7 +114,7 @@ st.markdown("""
 
 if "history" not in st.session_state:
     st.session_state.history = [
-        {"role": "bot", "content": "Hello! I'm your Rice Disease Q&A Assistant. Ask me anything about rice diseases — e.g., 'What causes rice blast?' or 'How to control tungro?'"}
+        {"role": "bot", "content": "Hello! I'm your Rice Disease Q&A Assistant. Ask me anything about rice diseases — e.g., 'What causes rice blast?' or 'How to control tungro?"}
     ]
 
 if "audio_enabled" not in st.session_state:
