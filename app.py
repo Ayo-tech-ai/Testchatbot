@@ -1,19 +1,29 @@
 import streamlit as st
 from transformers import pipeline
+from gtts import gTTS
+from audiorecorder import audiorecorder
+import tempfile
+import whisper
+import os
 import time
 
 # -------------------------------
-# 1. Load Q&A Model
+# 1. Load Models
 # -------------------------------
 
 @st.cache_resource
 def load_qa_model():
     return pipeline("question-answering", model="distilbert-base-uncased-distilled-squad")
 
+@st.cache_resource
+def load_whisper_model():
+    return whisper.load_model("base")  # Automatically downloads first run
+
 qa_pipeline = load_qa_model()
+whisper_model = load_whisper_model()
 
 # -------------------------------
-# 2. Context Sections (Knowledge Base)
+# 2. Context (Knowledge Base)
 # -------------------------------
 
 sections = {
@@ -33,10 +43,10 @@ sections = {
 }
 
 # -------------------------------
-# 3. Page Config and Styling
+# 3. Page Setup & Styling
 # -------------------------------
 
-st.set_page_config(page_title="🌾 Rice Disease Q&A Assistant", layout="centered")
+st.set_page_config(page_title="🌾 Voice-Enabled Rice Q&A Assistant", layout="centered")
 
 st.markdown("""
 <style>
@@ -75,7 +85,7 @@ st.markdown("""
 
 if "history" not in st.session_state:
     st.session_state.history = [
-        {"role": "bot", "content": "Hello 👋🏽! I’m your Rice Disease Q&A Assistant. Ask me anything about rice diseases — e.g., 'What causes rice blast?' or 'How to control tungro?'."}
+        {"role": "bot", "content": "Hello 👋🏽! You can type or record your question about rice diseases — e.g., 'What causes rice blast?'."}
     ]
 
 # -------------------------------
@@ -83,7 +93,6 @@ if "history" not in st.session_state:
 # -------------------------------
 
 st.markdown("<div class='chat-container'>", unsafe_allow_html=True)
-
 for msg in st.session_state.history:
     role_class = "user" if msg["role"] == "user" else "bot"
     st.markdown(
@@ -94,28 +103,56 @@ for msg in st.session_state.history:
         </div>
         """, unsafe_allow_html=True
     )
-
 st.markdown("</div>", unsafe_allow_html=True)
 
 # -------------------------------
-# 6. Chat Input (Pinned Below)
+# 6. User Input Options (Text or Voice)
 # -------------------------------
 
-question = st.chat_input("Type your question about rice diseases...")
+st.markdown("🎙️ **Record your voice question below:**")
+audio = audiorecorder("🎧 Click to record", "Recording...")
+
+question = None
+
+# If audio recorded
+if len(audio) > 0:
+    st.audio(audio.export().read(), format="audio/wav")
+    with st.spinner("Transcribing your voice..."):
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+            audio.export(tmp.name, format="wav")
+            result = whisper_model.transcribe(tmp.name)
+            question = result["text"]
+        st.markdown(f"🗣️ You said: **{question}**")
+
+# Text fallback
+text_input = st.chat_input("💬 Type your question instead...")
+if text_input:
+    question = text_input
+
+# -------------------------------
+# 7. Output Mode Selection
+# -------------------------------
+
+output_mode = st.radio(
+    "How do you want to receive the bot's response?",
+    ["Text only", "Text + Voice"],
+    horizontal=True
+)
+
+# -------------------------------
+# 8. Process Question
+# -------------------------------
 
 if question:
-    # Store user message
     st.session_state.history.append({"role": "user", "content": question})
 
-    # Process the question
     with st.spinner("Analyzing your question..."):
         selected_context = None
         for keyword, section in sections.items():
             if keyword in question.lower():
                 selected_context = section
                 break
-
-        time.sleep(1)  # small delay for realism
+        time.sleep(1)
 
         if selected_context:
             result = qa_pipeline(question=question, context=selected_context)
@@ -123,8 +160,17 @@ if question:
         else:
             answer = "I couldn’t match your question to a specific disease. Try including the name, like 'blast', 'blight', or 'tungro'."
 
-    # Add bot response to history
     st.session_state.history.append({"role": "bot", "content": answer})
 
-    # Rerun to refresh chat
+    # -------------------------------
+    # 9. Optional Audio Output
+    # -------------------------------
+
+    if output_mode == "Text + Voice":
+        with st.spinner("Generating voice reply..."):
+            tts = gTTS(answer)
+            audio_path = "bot_reply.mp3"
+            tts.save(audio_path)
+            st.audio(audio_path, autoplay=True)
+
     st.rerun()
