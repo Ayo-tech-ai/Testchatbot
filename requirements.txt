@@ -3,3 +3,7 @@ transformers
 torch
 huggingface_hub
 requests
+soundfile
+gtts
+git+https://github.com/openai/whisper.git
+streamlit-audiorecorder
